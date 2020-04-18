@@ -1,7 +1,10 @@
-package goxget
+package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"os/user"
 	"path"
 
@@ -14,6 +17,32 @@ func _require(attr string) {
 
 func _incomplete() {
 	fmt.Printf("[E] 配置文件不完整\n")
+}
+
+func downloadConfigXML() bool {
+	resp, err := http.Get(DEFAULT_CONFIG_XML_URL)
+	if err != nil {
+		fmt.Println("[E] 配置文件下载失败")
+		return false
+	}
+
+	cur, err := user.Current()
+	if err != nil {
+		fmt.Println("[E] 获取当前用户Home目录失败")
+		return false
+	}
+
+	f, err := os.Create(path.Join(cur.HomeDir, CONFIG_XML_PATH))
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = io.Copy(f, resp.Body)
+	if err != nil {
+		panic(err)
+	}
+
+	return true
 }
 
 /*
@@ -85,6 +114,10 @@ func readConfigXml() *etree.Document {
 func listAllPkgConfig() []*Repo {
 	repos := make([]*Repo, 0)
 	doc := readConfigXml()
+
+	if doc == nil {
+		return repos
+	}
 
 	root := doc.SelectElement("xrepos")
 	if root == nil {

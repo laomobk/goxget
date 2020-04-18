@@ -1,4 +1,4 @@
-package goxget
+package main
 
 type Repo struct {
 	pkgName     string

@@ -1,4 +1,4 @@
-package goxget
+package main
 
 func TestListRepo() {
 	repos := listAllPkgConfig()
