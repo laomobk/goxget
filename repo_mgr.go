@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/user"
 	"path"
+	"strconv"
 
 	"github.com/beevik/etree"
 )
@@ -21,7 +23,7 @@ func _incomplete() {
 
 func downloadConfigXML() bool {
 	resp, err := http.Get(DEFAULT_CONFIG_XML_URL)
-	if err != nil {
+	if err != nil || resp.StatusCode != 200 {
 		fmt.Println("[E] 配置文件下载失败")
 		return false
 	}
@@ -43,6 +45,75 @@ func downloadConfigXML() bool {
 	}
 
 	return true
+}
+
+func checkConfigUpdate() (code int, msg string) {
+	resp, err := http.Get(DEFAULT_CONFIG_XML_URL)
+	if err != nil || resp.StatusCode != 200 {
+		return -1, "更新请求失败"
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return -1, "更新请求失败"
+	}
+
+	doc := etree.NewDocument()
+	err = doc.ReadFromBytes(body)
+
+	if err != nil {
+		return -1, "配置文件结构出错"
+	}
+
+	root := doc.SelectElement("xrepos")
+	if root == nil {
+		return -1, "配置文件结构出错"
+	}
+
+	vweb := getVersionNumber(root)
+
+	docLocal := readConfigXml()
+	if docLocal == nil {
+		return 1, "读取本地配置文件出错，将自动升级"
+	}
+
+	rootl := docLocal.SelectElement("xrepos")
+	if rootl == nil {
+		return 1, "本地配置文件结构出错，将自动升级"
+	}
+
+	vloc := getVersionNumber(rootl)
+
+	if vloc < vweb {
+		return 1, fmt.Sprintf("配置文件有可用更新（版本号: %d）", vweb)
+	} else if vloc == vweb {
+		return 0, fmt.Sprintf("配置文件已是最新版本（版本号：%d）", vweb)
+	}
+	return 0, fmt.Sprintf(
+		"本地版本号（%s）较新，这位仁兄是否愿意更新平台上的版本？",
+		vloc)
+
+}
+
+/*
+	version number format : [Date][DailyVersionNumber]
+	Date : YYMMDD (e.g. 20190726)
+	DailyVersionNumber : %03d (e.g. 003)
+
+	e.g.
+		20190726003
+*/
+func getVersionNumber(root *etree.Element) uint64 {
+	v := root.SelectAttr("version")
+	if v == nil {
+		return 0
+	}
+
+	vi, err := strconv.ParseUint(v.Value, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return vi
 }
 
 /*

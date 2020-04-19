@@ -8,9 +8,9 @@ import (
 )
 
 type Getter struct {
-	req string
+	req    string
 	gopath string
-	repos []*Repo
+	repos  []*Repo
 }
 
 func NewGetter(req string, gopath string, repos []*Repo) *Getter {
@@ -28,6 +28,16 @@ func (self *Getter) Get() (ok bool) {
 
 	var repo *Repo
 
+	clonePath := path.Join(self.gopath, "src", self.req)
+
+	_, err := os.Stat(clonePath)
+	if !os.IsNotExist(err) {
+		fmt.Println("[T] 同名包已存在")
+		return true
+	}
+
+	fmt.Println("[N] 正在寻找可替换的库")
+
 	for _, r := range self.repos {
 		if r.pkgName == req {
 			repo = r
@@ -35,11 +45,14 @@ func (self *Getter) Get() (ok bool) {
 	}
 
 	if repo == nil {
-		fmt.Println("[W] 无替换仓库，使用默认 go get")
-
 		gexe, err := exec.LookPath("go")
 		if err != nil {
 			fmt.Println("[E] 找不到 go 可执行文件")
+			return false
+		}
+		fmt.Println("[W] 无替换仓库，使用默认 go get")
+
+		if !askYN("\n是否继续？(Y/n)") {
 			return false
 		}
 
@@ -47,7 +60,7 @@ func (self *Getter) Get() (ok bool) {
 		gcmd.Stdout = os.Stdout
 		gcmd.Stdin = os.Stdin
 		gcmd.Stderr = os.Stderr
-		err  = gcmd.Run()
+		err = gcmd.Run()
 
 		if err != nil {
 			fmt.Println("[E] Go get 命令执行出错")
@@ -64,14 +77,18 @@ func (self *Getter) Get() (ok bool) {
 		return false
 	}
 
-	clonePath := path.Join(self.gopath, self.req)
-
-	cmd := exec.Command(gitexe, repo.replRepoUrl, clonePath)
+	cmd := exec.Command(gitexe, "clone", "--recurse-submodules", repo.replRepoUrl, clonePath)
 	cmd.Stdout = os.Stdout
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
 
-	fmt.Printf("即将使用来自 %s 的库 %s 来替代 %s", repo.website, repo.replRepoUrl, repo.pkgName)
+	fmt.Printf("替代包信息：\n\t库：%s\n\t托管平台：%s\n",
+		repo.replRepoUrl, repo.website)
+	fmt.Printf("原包信息：\n\t包名：%s\n", repo.pkgName)
+
+	if !askYN("\n是否继续？(Y/n): ") {
+		return false
+	}
 
 	err = cmd.Run()
 	if err != nil {
